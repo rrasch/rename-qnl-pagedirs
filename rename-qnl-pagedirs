@@ -1,0 +1,145 @@
+#!/usr/bin/python3
+
+from pprint import pformat
+import argparse
+import grp
+import logging
+import os
+import pwd
+import stat
+import sys
+import time
+
+
+DMAKER_SUFFIX = "_d.tif"
+
+
+def format_permissions(path):
+    file_stat = os.stat(path)
+
+    # Get the file's permissions
+    permissions = stat.S_IMODE(file_stat.st_mode)
+    permissions_str = "".join(
+        [
+            "r" if permissions & stat.S_IRUSR else "-",
+            "w" if permissions & stat.S_IWUSR else "-",
+            "x" if permissions & stat.S_IXUSR else "-",
+            "r" if permissions & stat.S_IRGRP else "-",
+            "w" if permissions & stat.S_IWGRP else "-",
+            "x" if permissions & stat.S_IXGRP else "-",
+            "r" if permissions & stat.S_IROTH else "-",
+            "w" if permissions & stat.S_IWOTH else "-",
+            "x" if permissions & stat.S_IXOTH else "-",
+        ]
+    )
+
+    # Get the file type (regular file or directory)
+    file_type = "d" if stat.S_ISDIR(file_stat.st_mode) else "-"
+
+    # Get the file's owner and group name
+    owner = pwd.getpwuid(file_stat.st_uid).pw_name
+    group = grp.getgrgid(file_stat.st_gid).gr_name
+
+    # Get the file size
+    file_size = file_stat.st_size
+
+    # Get the last modification time
+    last_modified = time.strftime(
+        "%b %d %Y", time.localtime(file_stat.st_mtime)
+    )
+
+    # Print the information similar to 'ls -l' output
+    return (
+        f"{file_type}{permissions_str} {file_stat.st_nlink} "
+        f"{owner} {group} {file_size} {last_modified} {path}"
+    )
+
+
+def is_writable_and_executable(dirpath):
+    return os.access(dirpath, os.W_OK | os.X_OK)
+
+
+def is_dmaker(entry):
+    return entry.name.endswith(DMAKER_SUFFIX) and entry.is_file()
+
+
+def isdigit(entry):
+    return entry.name.isdigit() and entry.is_dir()
+
+
+def path_grep(dirpath, cond_func):
+    return [
+        entry.path
+        for entry in sorted(os.scandir(dirpath), key=lambda e: e.name)
+        if cond_func(entry)
+    ]
+
+
+def validate_dirpath(dirpath):
+    """Validates a dirpath and returns it if valid."""
+    if not os.path.isdir(dirpath):
+        raise argparse.ArgumentTypeError(f"Directory not found: '{dirpath}'")
+    return os.path.realpath(dirpath)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=(
+            "Rename page-level directories in newly delivered QNL OCR"
+            " directories to match source filenames"
+        )
+    )
+    parser.add_argument(
+        "se_dir",
+        type=validate_dirpath,
+        help="Path to book SE directory in R* that contains dmaker files",
+    )
+    parser.add_argument(
+        "qnl_dir",
+        type=validate_dirpath,
+        help="QNL directory with page-level directories to be renamed",
+    )
+    parser.add_argument(
+        "-n",
+        "--dry-run",
+        action="store_true",
+        help="Don't actually rename anything, implies --debug",
+    )
+    parser.add_argument(
+        "-d", "--debug", action="store_true", help="Enable debugging"
+    )
+    args = parser.parse_args()
+
+    if args.dry_run:
+        args.debug = True
+
+    level = logging.DEBUG if args.debug else logging.WARNING
+    logging.basicConfig(format="%(levelname)s: %(message)s", level=level)
+
+    src_list = path_grep(args.qnl_dir, isdigit)
+
+    len_suffix = len(DMAKER_SUFFIX)
+    dmaker_imgs = path_grep(args.se_dir, is_dmaker)
+    dst_list = [img[:-len_suffix] for img in dmaker_imgs]
+
+    if len(src_list) != len(dst_list):
+        sys.exit(
+            "Number of dmaker files in the R* directory"
+            f" ({len(src_list)}) doesn't match the number of QNL page-level"
+            f" directories ({len(dst_list)})"
+        )
+
+    if not is_writable_and_executable(args.qnl_dir):
+        sys.exit(
+            "You don't have write and execute permissions on QNL directory"
+            f" '{args.qnl_dir}' perm: {format_permissions(args.qnl_dir)}"
+        )
+
+    for src, dst in zip(src_list, dst_list):
+        logging.debug(f"Renaming '{src}' to '{dst}'")
+        if not args.dry_run:
+            os.rename(src, dst)
+
+
+if __name__ == "__main__":
+    main()
