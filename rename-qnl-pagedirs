@@ -14,6 +14,39 @@ import time
 DMAKER_SUFFIX = "_d.tif"
 
 
+class ColorFormatter:
+    color_codes = {
+        "red": "\033[31m",
+        "green": "\033[32m",
+        "yellow": "\033[33m",
+        "blue": "\033[34m",
+        "magenta": "\033[35m",
+        "cyan": "\033[36m",
+        "reset": "\033[0m",
+    }
+
+    def __init__(self, use_color=True):
+        """
+        Initializes the ColorFormatter.
+        :param use_color: Boolean that determines whether to format text in color.
+                          This value is overwridden to False if stdout is
+                          not connected to a tty.
+        """
+        self.use_color = use_color and sys.stdout.isatty()
+
+    def format(self, text, color):
+        """
+        Return the given text in color if use_color is True.
+        :param text: The text to format.
+        :param color: The color to use.
+        """
+        return (
+            f"{self.color_codes[color]}{text}{self.color_codes['reset']}"
+            if self.use_color
+            else text
+        )
+
+
 def format_permissions(path):
     file_stat = os.stat(path)
 
@@ -48,7 +81,7 @@ def format_permissions(path):
         "%b %d %Y", time.localtime(file_stat.st_mtime)
     )
 
-    # Print the information similar to 'ls -l' output
+    # Return the information similar to 'ls -l' output
     return (
         f"{file_type}{permissions_str} {file_stat.st_nlink} "
         f"{owner} {group} {file_size} {last_modified} {path}"
@@ -106,6 +139,12 @@ def main():
         help="Don't actually rename anything, implies --debug",
     )
     parser.add_argument(
+        "-c",
+        "--colorize",
+        action="store_true",
+        help="Colorize logging messages",
+    )
+    parser.add_argument(
         "-d", "--debug", action="store_true", help="Enable debugging"
     )
     args = parser.parse_args()
@@ -135,8 +174,13 @@ def main():
             f" '{args.qnl_dir}' perm: {format_permissions(args.qnl_dir)}"
         )
 
+    cf = ColorFormatter(use_color=args.colorize)
     for src, dst in zip(src_list, dst_list):
-        logging.debug(f"Renaming '{src}' to '{dst}'")
+        logging.debug(
+            f"Renaming '%s' to '%s'",
+            cf.format(src, "red"),
+            cf.format(dst, "green"),
+        )
         if not args.dry_run:
             os.rename(src, dst)
 
