@@ -15,6 +15,13 @@ DMAKER_SUFFIX = "_d.tif"
 
 
 class ColorFormatter:
+    """Class for colorizing text
+
+    Attributes:
+        ColorFormatter.color_codes (dict[str]):  dict of ANSI color codes
+
+    """
+
     color_codes = {
         "red": "\033[31m",
         "green": "\033[32m",
@@ -30,7 +37,7 @@ class ColorFormatter:
         Initializes the ColorFormatter.
         :param use_color: Boolean that determines whether to format text in color.
                           This value is overwridden to False if stdout is
-                          not connected to a tty.
+                          not connected to a tty. (default is True)
         """
         self.use_color = use_color and sys.stdout.isatty()
 
