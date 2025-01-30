@@ -6,7 +6,6 @@
 
 """
 
-from pprint import pformat
 from typing import Callable, List
 import argparse
 import grp
@@ -241,7 +240,7 @@ def main():
     cf = ColorFormatter(use_color=args.colorize)
     for src, dst in zip(src_list, dst_list):
         logging.debug(
-            f"Renaming '%s' to '%s'",
+            "Renaming '%s' to '%s'",
             cf.format(src, "red"),
             cf.format(dst, "green"),
         )
