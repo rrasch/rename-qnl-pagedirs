@@ -1,6 +1,13 @@
 #!/usr/bin/python3
 
+"""
+    rename-qnl-pagedirs -- rename QNL page-level directories to reflect
+                           source filenames (JIRA: DLTSACO-896)
+
+"""
+
 from pprint import pformat
+from typing import Callable, List
 import argparse
 import grp
 import logging
@@ -35,13 +42,13 @@ class ColorFormatter:
     def __init__(self, use_color=True):
         """
         Initializes the ColorFormatter.
-        :param use_color: Boolean that determines whether to format text in color.
-                          This value is overwridden to False if stdout is
-                          not connected to a tty. (default is True)
+        :param use_color: Boolean that determines whether to format text
+            in color. This value is overwridden to False if stdout is not
+            connected to a tty. (default is True)
         """
         self.use_color = use_color and sys.stdout.isatty()
 
-    def format(self, text, color):
+    def format(self, text: str, color: str) -> str:
         """
         Return the given text in color if use_color is True.
         :param text: The text to format.
@@ -54,7 +61,13 @@ class ColorFormatter:
         )
 
 
-def format_permissions(path):
+def format_permissions(path: str) -> str:
+    """Return string representing permissions for file or directory
+    similar to output of "ls -l" command, e.g. "-rw-r--r--"
+
+    Args:
+        path (str): path to file or directory
+    """
     file_stat = os.stat(path)
 
     # Get the file's permissions
@@ -95,19 +108,56 @@ def format_permissions(path):
     )
 
 
-def is_writable_and_executable(dirpath):
-    return os.access(dirpath, os.W_OK | os.X_OK)
+def is_writable_and_executable(path: str) -> bool:
+    """Checks if a file or directory is writable and executable
+
+    Args:
+        path (str): path to file or directory
+
+    Returns:
+        True if path is writable and executable, False otherwise
+    """
+    return os.access(path, os.W_OK | os.X_OK)
 
 
-def is_dmaker(entry):
+def is_dmaker(entry: os.DirEntry) -> bool:
+    """Checks if entry is derivative maker image
+
+    Args:
+        enrtry (os.DirEntry): os.DirEntry object to check
+
+    Returns:
+        True if entry is a derivative maker, False otherwise
+    """
     return entry.name.endswith(DMAKER_SUFFIX) and entry.is_file()
 
 
-def isdigit(entry):
+def isdigit(entry: os.DirEntry) -> bool:
+    """Checks if entry's path name consists of all numbers and
+    entry is a directory
+
+    Args:
+        enrtry (os.DirEntry): os.DirEntry object to check
+
+    Returns:
+        True if entry's path is all numbers and entry is a directory,
+        False otherwise
+    """
     return entry.name.isdigit() and entry.is_dir()
 
 
-def path_grep(dirpath, cond_func):
+def path_grep(
+    dirpath: str, cond_func: Callable[[os.DirEntry], bool]
+) -> List[os.DirEntry]:
+    """Gets list of directory entries that match a condition
+
+    Args:
+        dirpath (str): directory path to search
+        cond_func (callable): function providing condition to match
+
+    Returns:
+        list of os.DirEntry file objects that match condition
+    """
     return [
         entry.path
         for entry in sorted(os.scandir(dirpath), key=lambda e: e.name)
@@ -115,7 +165,7 @@ def path_grep(dirpath, cond_func):
     ]
 
 
-def validate_dirpath(dirpath):
+def validate_dirpath(dirpath: str) -> str:
     """Validates a dirpath and returns it if valid."""
     if not os.path.isdir(dirpath):
         raise argparse.ArgumentTypeError(f"Directory not found: '{dirpath}'")
@@ -154,6 +204,13 @@ def main():
     parser.add_argument(
         "-d", "--debug", action="store_true", help="Enable debugging"
     )
+    parser.add_argument(
+        "-p",
+        "--no-check-permissions",
+        dest="check_perms",
+        action="store_false",
+        help=argparse.SUPPRESS,
+    )
     args = parser.parse_args()
 
     if args.dry_run:
@@ -175,7 +232,7 @@ def main():
             f" directories ({len(dst_list)})"
         )
 
-    if not is_writable_and_executable(args.qnl_dir):
+    if args.check_perms and not is_writable_and_executable(args.qnl_dir):
         sys.exit(
             "You don't have write and execute permissions on QNL directory"
             f" '{args.qnl_dir}' perm: {format_permissions(args.qnl_dir)}"
