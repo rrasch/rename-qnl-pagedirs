@@ -222,7 +222,10 @@ def main():
 
     len_suffix = len(DMAKER_SUFFIX)
     dmaker_imgs = path_grep(args.se_dir, is_dmaker)
-    dst_list = [img[:-len_suffix] for img in dmaker_imgs]
+    dst_list = [
+        os.path.join(args.qnl_dir, os.path.basename(img[:-len_suffix]))
+        for img in dmaker_imgs
+    ]
 
     if len(src_list) != len(dst_list):
         sys.exit(
