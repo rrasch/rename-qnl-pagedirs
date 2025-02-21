@@ -6,6 +6,7 @@
 
 """
 
+from pprint import pformat
 from typing import Callable, List
 import argparse
 import grp
@@ -145,6 +146,33 @@ def isdigit(entry: os.DirEntry) -> bool:
     return entry.name.isdigit() and entry.is_dir()
 
 
+def startswith(bookid: str) -> Callable[[os.DirEntry], bool]:
+    """Return a function that checks if entry's path starts with a bookid
+
+    Args:
+        bookid (str): book object id
+
+    Returns:
+        function that takes an os.DirEntry as input and returns a bool
+    """
+
+    def _startswith_bookid(entry: os.DirEntry) -> bool:
+        """Return True if entry's path starts with bookid and entry is
+        a directory, False otherwise
+
+        Args::
+            entry (os.DirEntry): os.DirEntry object to check
+        """
+        return clean_text(entry.name).startswith(bookid) and entry.is_dir()
+
+    return _startswith_bookid
+
+
+def clean_text(text: str) -> str:
+    """Return text with byte order marker removed from start of string"""
+    return text.lstrip("\ufeff")
+
+
 def path_grep(
     dirpath: str, cond_func: Callable[[os.DirEntry], bool]
 ) -> List[os.DirEntry]:
@@ -159,7 +187,9 @@ def path_grep(
     """
     return [
         entry.path
-        for entry in sorted(os.scandir(dirpath), key=lambda e: e.name)
+        for entry in sorted(
+            os.scandir(dirpath), key=lambda e: clean_text(e.name)
+        )
         if cond_func(entry)
     ]
 
@@ -169,6 +199,11 @@ def validate_dirpath(dirpath: str) -> str:
     if not os.path.isdir(dirpath):
         raise argparse.ArgumentTypeError(f"Directory not found: '{dirpath}'")
     return os.path.realpath(dirpath)
+
+
+def get_bookid(se_dir):
+    """Return bookid from source entity data directory"""
+    return os.path.basename(os.path.dirname(se_dir))
 
 
 def main():
@@ -218,6 +253,12 @@ def main():
     level = logging.DEBUG if args.debug else logging.WARNING
     logging.basicConfig(format="%(levelname)s: %(message)s", level=level)
 
+    bookid = get_bookid(args.se_dir)
+    # logging.debug("Book ID: %s", bookid)
+
+    renamed_list = path_grep(args.qnl_dir, startswith(bookid))
+    # logging.debug("Renamed dir list: %s", pformat(renamed_list))
+
     src_list = path_grep(args.qnl_dir, isdigit)
 
     len_suffix = len(DMAKER_SUFFIX)
@@ -226,12 +267,24 @@ def main():
         os.path.join(args.qnl_dir, os.path.basename(img[:-len_suffix]))
         for img in dmaker_imgs
     ]
+    # logging.debug("destination_list: %s", pformat(dst_list))
+
+    if not dst_list:
+        sys.exit(f"Couldn't find dmaker images in '{args.se_dir}'")
+
+    if not src_list:
+        if len(dst_list) == len(renamed_list):
+            logging.warn(
+                "QNL page-level directories in '%s' possibly already renamed.",
+                args.qnl_dir,
+            )
+        sys.exit(f"Coudn't find QNL page-level directories in '{args.qnl_dir}'")
 
     if len(src_list) != len(dst_list):
         sys.exit(
-            "Number of dmaker files in the R* directory"
-            f" ({len(src_list)}) doesn't match the number of QNL page-level"
-            f" directories ({len(dst_list)})"
+            f"Number of dmaker files in the R* directory '{args.se_dir}'"
+            f" ({len(dst_list)}) doesn't match the number of QNL page-level"
+            f" directories in '{args.qnl_dir}' ({len(src_list)})"
         )
 
     if args.check_perms and not is_writable_and_executable(args.qnl_dir):
